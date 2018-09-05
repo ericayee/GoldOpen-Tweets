@@ -21,7 +21,7 @@ I followed this [Storybench tutorial](http://www.storybench.org/build-animated-m
 
 I followed the instructions on the [rtweet website](https://rtweet.info/) to set up a Twitter app and authenticated it using the `create_token()` function as shown in the documentation.
 
-# Setting up the R environment
+## Setting up the R environment
 
 Here are the packages I used to pull, analyze, and visualize the tweets.
 
