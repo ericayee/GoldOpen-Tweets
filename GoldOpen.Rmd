@@ -1,0 +1,243 @@
+---
+title: 'Mapping #GoldOpen Tweets'
+author: ericayee
+date: "September 3, 2018"
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+I've wanted to learn R for a while for its data analysis capabilities, so here's my first project in R based on this [Storybench tutorial](http://www.storybench.org/build-animated-map-tweets-nba-finals-r/).
+
+When the film "Crazy Rich Asians" came out in theaters on August 15, 2018, at least dozens of celebrities, organizations, and private citizens bought out theaters to ensure a successful "#GoldOpen," as the campaign was called on Twitter. As the first major Hollywood film in 25 years with an all-Asian cast, the film is a cultural moment for Asian AMericans like myself.
+
+I followed this [Storybench tutorial](http://www.storybench.org/build-animated-map-tweets-nba-finals-r/), which has detailed instructions on tracking tweets about the NBA finals, using #GoldOpen tweets instead. The rtweet library captures tweets from up to the last 10 days, so I was too late to see the majority of tweets when the film was released. But in my results I observed tweets from a follow-up campaign for "Searching," which stars John Cho and had a wide release on August 31, 2018.
+
+## Setting up the Twitter app
+
+I followed the instructions on the [rtweet website](https://rtweet.info/) to set up a Twitter app and authenticated it using the `create_token()` function as shown in the documentation.
+
+# Setting up the R environment
+
+Here are the packages I used to pull, analyze, and visualize the tweets.
+
+```{r echo = TRUE, results = 'hide', message=FALSE, warning=FALSE}
+library(tidyverse)
+library(rtweet)
+library(ggplot2)
+library(ggmap)
+library(maps)
+library(mapdata)
+library(ggraph)
+library(igraph)
+library(hrbrthemes)
+library(ggalt)
+library(ggthemes)
+```
+
+## Let's get some tweets!
+
+I found tweets with the hashtag #GoldOpen using the rtweet package.
+
+```{r echo = TRUE, results = 'hide', message=FALSE, warning=FALSE}
+GoldOpen <- rtweet::search_tweets(
+  "GoldOpen",
+  n = 50000,
+  retryonratelimit = TRUE)
+```
+
+Here's the data frame of results.
+
+```{r}
+#GoldOpen %>% head(10)
+GoldOpen %>% dplyr::glimpse()
+```
+
+
+The data frame has 2,000 observations and 88 variables. Let's see which variables from the query are available when I use the `users_data()` function.
+
+```{r}
+tibble::as_tibble(
+  base::intersect(x = base::names(GoldOpen), 
+                                  y = base::names(rtweet::users_data(GoldOpen))))
+```
+
+I can store those results when I look at the user data of the #GoldOpen query in a new data frame.
+
+```{r}
+UsersGoldOpen <- rtweet::users_data(GoldOpen)
+UsersGoldOpen %>% head(10)
+```
+
+Now that I've looked at user data, I move on to tweet data.
+
+```{r}
+tibble::as_tibble(
+  intersect(x = base::names(GoldOpen), 
+                                  y = base::names(rtweet::tweets_data(GoldOpen))))
+```
+
+Again, I can save the results of running that function on the GoldOpen query to a dataframe.
+
+```{r}
+TweetsGoldOpen <- rtweet::tweets_data(GoldOpen)
+```
+
+Here are the contents of the first 10 tweets stored in the `text` variable.
+
+```{r}
+GoldOpen %>%
+    dplyr::select(text) %>%
+    utils::head(10)
+```
+
+## Construct a timeline of tweets
+
+I can plot tweets over time using the `rtweet::ts_plot()` function and a few other packages to tweak the visuals.
+
+```{r}
+gg_ts_plot <- GoldOpen %>%
+    rtweet::ts_plot(., by = "15 minutes") +
+    ggthemes::theme_gdocs() +
+    ggplot2::theme(plot.title =
+        ggplot2::element_text(face = "bold")) +
+    ggplot2::labs(
+        x = NULL,
+        y = NULL,
+        title = "Freequency of #GoldOpen tweets",
+        subtitle = "Tweet counts aggregated using 15-min intervals",
+        caption = "\nSource: Data collected from Twitter's REST API via rtweet")
+```
+
+Here's the plot.
+
+```{r}
+gg_ts_plot
+```
+
+## Adding geographic information
+
+Now that I've seen time information, let's add latitude and longitutde to the tweet data.
+
+```{r}
+GoldOpenLoc <- rtweet::lat_lng(GoldOpen)
+```
+
+I can verify the function added lat and lng variables to the GoldOpen data frame.
+
+```{r}
+GoldOpenLoc %>% names() %>% tail(2)
+```
+
+Let's see how many tweets have latitude and longitude information.
+
+```{r}
+GoldOpenLoc %>% dplyr::distinct(lng) %>% base::nrow()
+```
+
+Only 26 of the 2,000 tweets have the geographic information, but we can map the results we have. Let's rename lng to long, which will be helpful later on.
+
+```{r}
+GoldOpenLoc <- GoldOpenLoc %>% dplyr::rename(long = lng)
+```
+
+## Creating a world map of tweets
+
+I first need to get the data for a world map.
+
+```{r}
+World <- ggplot2::map_data("world")
+World %>% head(10)
+```
+
+This next function will create a map using that data.
+
+```{r}
+ggWorldMap <- ggplot2::ggplot() + 
+    ggplot2::geom_polygon(data = World,
+        aes(x = long,
+        y = lat,
+        group = group),
+        fill = "grey82",
+        color = "white",
+        alpha = 0.6)
+
+ggWorldMap +
+    ggplot2::theme_void() +
+    ggplot2::labs(title = "Basic World Map (geom_polygon)")
+```
+
+I can layer the tweet data on top of the world map.
+
+```{r}
+gg_Merc_title <- "#GoldOpen tweets worldwide, Aug 25 - Sept 3, 2018"
+gg_Merc_cap <- "Tweets collected with rtweet the hashtag #GoldOpen"
+gg_mercator_goldopen <- ggWorldMap +
+    ggplot2::coord_quickmap() +
+    ggplot2::geom_point(data = GoldOpenLoc,
+                        aes(x = long, y = lat),
+                        size = 1,
+                        color = "gold") +
+    ggplot2::labs(title = gg_Merc_title,
+        caption = gg_Merc_cap) +   
+    ggplot2::theme_void()
+```
+
+Here's the map with the tweet data.
+
+```{r echo = TRUE, results = 'hide', message=FALSE, warning=FALSE}
+gg_mercator_goldopen
+```
+
+I now want to zoom in on just tweets from the U.S. The code is almost exactly the same as above. Here is the blank map of the U.S.
+
+```{r}
+USmap <- ggplot2::map_data("usa")
+
+ggUSMap <- ggplot2::ggplot() +
+    ggplot2::geom_polygon(data = USmap,
+        aes(x = long,
+        y = lat,
+        group = group),
+        fill = "grey82",
+        color = "grey92",
+        alpha = 0.6)
+        
+ggUSMap + ggplot2::theme_void()
+
+```
+
+I can filter the data down to just tweets from the U.S.
+
+```{r}
+USfilter <- GoldOpenLoc %>% filter(country == "United States")
+
+USfilter %>% head(10)
+```
+
+Then I put these filtered tweets onto the map.
+
+```{r}
+gg_USMerc_title <- "#GoldOpen tweets, Aug 25 - Sept 3, 2018"
+
+gg_USMerc_cap <- "Tweets collected with rtweet the hashtag #GoldOpen"
+
+gg_usmercator_goldopen <- ggUSMap +
+    ggplot2::coord_quickmap() +
+    ggplot2::geom_point(data = USfilter,
+        aes(x = long, y = lat),
+        size = 1.0,
+        color = "gold") +
+    ggplot2::labs(title = gg_USMerc_title,
+        caption = gg_USMerc_cap) +
+    ggplot2::theme_void()
+    
+gg_usmercator_goldopen
+
+```
+
+There's not much I can extrapolate from such a small sample size, but I do see the few tweets I did get concentrated in urban coastal areas (SF, LA, NYC), where many Asians live.
